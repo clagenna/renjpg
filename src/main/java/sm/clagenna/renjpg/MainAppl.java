@@ -8,7 +8,8 @@ import java.awt.MediaTracker;
 import java.awt.Toolkit;
 import java.io.File;
 import java.io.IOException;
-import java.util.Vector;
+import java.util.ArrayList;
+import java.util.List;
 
 import javax.imageio.ImageIO;
 import javax.swing.ImageIcon;
@@ -28,7 +29,7 @@ public class MainAppl extends javax.swing.JFrame {
 
   private boolean           m_bSubDirs       = false;
 
-  Vector<TrattaJpgFile>     vecFiles;
+  List<IFotoFile>           vecFiles;
 
   private DeltaData         m_delta;
   private int               m_nRigaSel;
@@ -275,17 +276,22 @@ public class MainAppl extends javax.swing.JFrame {
 
   // GEN-FIRST:event_btDirClick
   private void btDirClick(java.awt.event.ActionEvent evt) {
-    String sz = getDir();
-    setDirPath(sz);
-    txDirSrc.setText(sz);
-    m_nRigaSel = -1;
+    setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+    try {
+      String sz = getDir();
+      setDirPath(sz);
+      txDirSrc.setText(sz);
+      m_nRigaSel = -1;
+    } finally {
+      setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));
+    }
   }// GEN-LAST:event_btDirClick
 
   // GEN-FIRST:event_btConvClick
   void btConvClick(java.awt.event.ActionEvent evt) {
     setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
     try {
-      for (TrattaJpgFile jp : vecFiles) {
+      for (IFotoFile jp : vecFiles) {
         jp.rinominaFile();
       }
       scanDir(getDirPath(), m_bSubDirs);
@@ -354,6 +360,12 @@ public class MainAppl extends javax.swing.JFrame {
   private String                  DirPath;
 
   public String getDirPath() {
+    String sz = txDirSrc.getText();
+    if (sz != null && sz.length() > 2) {
+      File fi = new File(sz);
+      if (fi.exists())
+        DirPath = sz;
+    }
     return DirPath;
   }
 
@@ -402,7 +414,7 @@ public class MainAppl extends javax.swing.JFrame {
   void scanDir(String szDir, boolean bSubDirs) {
     if (szDir == null)
       return;
-    vecFiles = new Vector<TrattaJpgFile>();
+    vecFiles = new ArrayList<IFotoFile>();
     File dir = null;
     try {
       dir = new File(szDir);
@@ -415,14 +427,19 @@ public class MainAppl extends javax.swing.JFrame {
     if ( !dir.isDirectory())
       return;
     System.out.println(szDir);
+    FotoFactory fact = new FotoFactory(this);
     File[] files = dir.listFiles();
     for (int i = 0; i < files.length; i++) {
       File fil = files[i];
       try {
         if (fil.isFile()) {
-          TrattaJpgFile jpgf = new TrattaJpgFile(this);
-          jpgf.setFilePath(fil);
-          if (jpgf.readFileJpeg()) {
+          IFotoFile jpgf = fact.get(fil);
+          if (jpgf == null) {
+            System.err.println("non tratto:" + fil.getAbsolutePath());
+            continue;
+          }
+          jpgf.setOldName(fil);
+          if (jpgf.getNewName() != null) {
             vecFiles.add(jpgf);
           }
         } else {
@@ -440,7 +457,7 @@ public class MainAppl extends javax.swing.JFrame {
     deleteRows();
     if (vecFiles == null)
       return;
-    for (TrattaJpgFile jpgf : vecFiles) {
+    for (IFotoFile jpgf : vecFiles) {
       addRow(jpgf);
     }
   }
@@ -448,7 +465,7 @@ public class MainAppl extends javax.swing.JFrame {
   /**
    * @param p_jpgf
    */
-  private void addRow(TrattaJpgFile p_jpgf) {
+  private void addRow(IFotoFile p_jpgf) {
     String szOld, szNew;
     szOld = p_jpgf.getOldShortName();
     szNew = p_jpgf.getNewName();
@@ -481,7 +498,7 @@ public class MainAppl extends javax.swing.JFrame {
       if (i != m_nRigaSel) {
         m_nRigaSel = i;
         if (m_nRigaSel >= 0 && vecFiles != null && vecFiles.size() > m_nRigaSel) {
-          TrattaJpgFile tjp = vecFiles.get(m_nRigaSel);
+          IFotoFile tjp = vecFiles.get(m_nRigaSel);
           setImage(tjp.getOldName());
           // m_img.setImage(tjp.getOldName());
         }
@@ -489,7 +506,7 @@ public class MainAppl extends javax.swing.JFrame {
     }
   }
 
-  private void setImage(String p_imgName) {
+  private void setImage(File p_imgName) {
     // ImageIcon ico = new ImageIcon(oldName); ??
     // lbJpg.setPreferredSize(new
     // Dimension(panJpg.getWidth(),panJpg.getHeight()));
@@ -499,7 +516,7 @@ public class MainAppl extends javax.swing.JFrame {
     //    Toolkit tk = Toolkit.getDefaultToolkit();
     //    Image img = tk.getImage(p_imgName);
     //    Image imgrsz = img.getScaledInstance(nw, nh, Image.SCALE_DEFAULT);
-    Image imgrsz = imageScaled(p_imgName, nw, nh);
+    Image imgrsz = imageScaled(p_imgName.getAbsolutePath(), nw, nh);
     ImageIcon icon = new ImageIcon(imgrsz);
     lbJpg.setIcon(icon);
     lbJpg.repaint();

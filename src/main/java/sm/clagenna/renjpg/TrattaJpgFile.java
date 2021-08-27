@@ -1,14 +1,8 @@
 package sm.clagenna.renjpg;
 
-import java.io.File;
 import java.io.IOException;
 import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import com.drew.imaging.jpeg.JpegMetadataReader;
 import com.drew.imaging.jpeg.JpegProcessingException;
@@ -535,50 +529,36 @@ import com.drew.metadata.Tag;
  * @author claudio
  *
  */
-public class TrattaJpgFile {
-  MainAppl                    appl;
+public class TrattaJpgFile extends TrattaFotoFile implements IFotoFile {
 
-  File                        fileJpg;
-
-  String                      oldName, newName;
-  Date                        dtScatto;
-
-  File                        fileOld;
-
-  private static final String FIL_PREFIX = "f";
-
-  private SimpleDateFormat    fmt        = new SimpleDateFormat("yyyyMMdd_HHmmss");
-
+  private static final String CSZ_EXTENTION = "jpg";
   Metadata                    m_mtdt;
-  Map<String, String>         m_mapPatt;
 
   public TrattaJpgFile(MainAppl app) {
-    appl = app;
-  }
-
-  public String getNewName() {
-    return newName;
+    super(app);
   }
 
   public void setNewName(String p_newName) {
     newName = p_newName;
   }
 
-  public String getOldName() {
-    return oldName;
-  }
-
-  public String getOldShortName() {
-    return fileJpg.getName();
-  }
-
-  public void setOldName(String p_oldName) {
-    oldName = p_oldName;
+  @Override
+  public String getNewName() {
+    String szRet = super.getNewName();
+    try {
+      if (szRet == null) {
+        if (readFileJpeg())
+          szRet = super.getNewName();
+      }
+    } catch (JpegProcessingException | IOException e) {
+      getAppl().log(e.getMessage());
+    }
+    return szRet;
   }
 
   public boolean readFileJpeg() throws JpegProcessingException, IOException {
     boolean bRet = false;
-    oldName = fileJpg.getAbsolutePath();
+    String oldName = getOldShortName();
     String szFilNam = oldName.toLowerCase();
     if ( !bRet)
       bRet = szFilNam.endsWith(".jpg");
@@ -586,24 +566,20 @@ public class TrattaJpgFile {
       bRet = szFilNam.endsWith(".jpeg");
     if ( !bRet)
       bRet = szFilNam.endsWith(".png");
-    //    if ( !bRet)
-    //      bRet = szFilNam.endsWith(".nef");
-    //    if ( !bRet)
-    //      bRet = szFilNam.endsWith(".cr2");
 
     if ( !bRet)
       return bRet;
 
     // trovo il nome in base alla data di scatto foto
     try {
-      m_mtdt = JpegMetadataReader.readMetadata(fileJpg);
+      m_mtdt = JpegMetadataReader.readMetadata(getOldName());
       newName = formattaNomeInData();
       if (newName != null && newName.length() > 9) {
         Date dt = fmt.parse(newName);
-        dt = appl.getDelta().spostaData(dt);
+        dt = getAppl().getDelta().spostaData(dt);
         newName = fmt.format(dt);
       } else {
-        Date dt = testPatternsFileName(fileJpg);
+        Date dt = testPatternsFileName(getOldName());
         if (dt != null)
           newName = fmt.format(dt);
       }
@@ -618,73 +594,7 @@ public class TrattaJpgFile {
     return bRet;
   }
 
-  private Date testPatternsFileName(File p_fileJpg) {
-    if (m_mapPatt == null)
-      creaMapPatt();
-    Date dtRet = null;
-    String szFilNam = p_fileJpg.getName();
-    try {
-      for (String szPat : m_mapPatt.keySet()) {
-        Pattern pat = Pattern.compile(szPat);
-        Matcher match = pat.matcher(szFilNam);
-
-        if (match.find()) {
-          int n1 = match.start();
-          int n2 = match.end();
-          String sz = szFilNam.substring(n1, n2);
-          String szFmt = m_mapPatt.get(szPat);
-          SimpleDateFormat dtFtm = new SimpleDateFormat(szFmt);
-          dtRet = dtFtm.parse(sz);
-          break;
-        }
-      }
-    } catch (ParseException ex) {
-      ex.printStackTrace();
-    }
-    return dtRet;
-  }
-
-  private void creaMapPatt() {
-    m_mapPatt = new HashMap<>();
-    m_mapPatt.put("[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] at [0-9][0-9]\\.[0-9][0-9]\\.[0-9][0-9]", "yyyy-MM-dd' at 'HH.mm.ss");
-    m_mapPatt.put("[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] at [0-9][0-9]\\:[0-9][0-9]\\:[0-9][0-9]", "yyyy-MM-dd' at 'HH:mm:ss");
-    m_mapPatt.put("[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_[0-9][0-9]\\.[0-9][0-9]\\.[0-9][0-9]", "yyyy-MM-dd'_'HH.mm.ss");
-  }
-
-  public boolean rinominaFile() {
-    boolean bRet = false;
-    // ripristino la modified-date alla data di scatto
-    Date dtCrea;
-    try {
-      dtCrea = fmt.parse(newName);
-      fileJpg.setLastModified(dtCrea.getTime());
-    } catch (ParseException e) {
-      log(e);
-    }
-    // se ha gia lo stesso nome ? allora esco
-    if (fileJpg.getAbsolutePath().toLowerCase().endsWith(newName.toLowerCase() + ".jpg"))
-      return bRet;
-
-    String szNewName = FIL_PREFIX + newName + ".jpg";
-    int k = 1;
-    while ( !bRet) {
-      String szDirBase = fileJpg.getAbsolutePath();
-      szDirBase = szDirBase.substring(0, szDirBase.lastIndexOf("\\"));
-      bRet = fileJpg.renameTo(new File(szDirBase + "\\" + szNewName));
-      if ( !bRet)
-        szNewName = FIL_PREFIX + newName + "_" + String.valueOf(k++) + ".jpg";
-    }
-    System.out.println("ren \"" + oldName + "\" " + szNewName);
-    return bRet;
-  }
-
-  public boolean ridimensiona(float fDim) {
-    boolean bRet = false;
-
-    return bRet;
-  }
-
-  private String formattaNomeInData() {
+  protected String formattaNomeInData() {
     String szNome = "";
     for (Directory directory : m_mtdt.getDirectories()) {
       try {
@@ -716,22 +626,14 @@ public class TrattaJpgFile {
     return szNome;
   }
 
-  public File getFilePath() {
-    return fileJpg;
+  public boolean ridimensiona(float fDim) {
+    boolean bRet = false;
+
+    return bRet;
   }
 
-  public void setFilePath(File path) {
-    fileJpg = path;
-  }
-
-  void log(Exception e) {
-    log(e.getMessage());
-    e.printStackTrace();
-  }
-
-  void log(String sz) {
-    if (appl != null)
-      appl.log(sz);
-    System.out.println(sz);
+  @Override
+  public String getFileExt() {
+    return CSZ_EXTENTION;
   }
 }
